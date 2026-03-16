@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Swipe Logout Calculator</title>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial; max-width:900px; margin:32px auto; padding:20px; color:#111; }
+    textarea { width:100%; height:220px; font-family: monospace; padding:10px; box-sizing:border-box; }
+    .row { display:flex; gap:10px; margin-top:12px; align-items:center; flex-wrap:wrap; }
+    button { padding:8px 12px; border-radius:8px; border:1px solid #ccc; background:#f7f7f8; cursor:pointer; }
+    .card { border:1px solid #e6e6e6; padding:12px; border-radius:8px; margin-top:16px; background:#fafafa; }
+    .mono { font-family: monospace; }
+    table { width:100%; border-collapse: collapse; margin-top:8px; }
+    td,th { padding:6px 8px; border-bottom:1px solid #eee; text-align:left; }
+    .muted { color:#666; font-size:0.95rem; }
+  </style>
+</head>
+<body>
+  <h1>Swipe Logout Calculator</h1>
+  <p class="muted">Paste your raw swipe text (like your example), then click <strong>Calculate</strong>. Frontend-only — good for GitHub Pages.</p>
+
+  <textarea id="inputArea" placeholder="Paste swipe log here (your example)"></textarea>
+
+  <div class="row">
+    <button id="calcBtn">Calculate</button>
+    <button id="sampleBtn">Load sample (your input)</button>
+    <label class="muted">Timezone: <span id="tzLabel"></span></label>
+  </div>
+
+  <div id="output" class="card" style="display:none;">
+    <h3>Summary</h3>
+    <div><strong>First IN:</strong> <span id="firstIn" class="mono"></span></div>
+    <div><strong>Total worked (inside):</strong> <span id="worked" class="mono"></span></div>
+    <div><strong>Total outside:</strong> <span id="outside" class="mono"></span></div>
+    <div><strong>Required in-day work:</strong> <span id="requiredWork" class="mono"></span></div>
+    <div><strong>Remaining work to do:</strong> <span id="remaining" class="mono"></span></div>
+    <div><strong>Projected logout:</strong> <span id="logout" class="mono"></span></div>
+
+    <h4>Event timeline</h4>
+    <table id="eventsTable"><thead><tr><th>Type</th><th>Timestamp</th><th>Duration</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <script>
+  // Modern, readable JS — follows common style patterns.
+  const tzLabel = document.getElementById('tzLabel');
+  tzLabel.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+
+  const sampleText = `Swipes (Total: 06:42 hrs)
+IN
+11:43:37 am
+16 Mar 2026
+SQL_Swipes
+Info
+OUT
+14:51:23 pm
+16 Mar 2026
+SQL_Swipes
+Info
+Actual Hours : 03 hrs 08 mins
+IN
+14:54:16 pm
+16 Mar 2026
+SQL_Swipes
+Info
+OUT
+18:01:26 pm
+16 Mar 2026
+SQL_Swipes
+Info
+Actual Hours : 03 hrs 07 mins
+IN
+18:23:26 pm
+16 Mar 2026
+SQL_Swipes
+Info
+OUT
+18:50:20 pm
+16 Mar 2026
+SQL_Swipes
+Info
+Actual Hours : 00 hrs 27 mins
+IN
+18:59:15 pm
+16 Mar 2026
+Actual Hours : 00 hrs 00 mins`;
+
+  document.getElementById('sampleBtn').addEventListener('click', () => {
+    document.getElementById('inputArea').value = sampleText;
+  });
+
+  document.getElementById('calcBtn').addEventListener('click', () => {
+    const raw = document.getElementById('inputArea').value.trim();
+    if (!raw) return alert('Paste the swipe text first.');
+    try {
+      const { firstIn, insideTotal, outsideTotal, requiredWorkMin, logout, events } = parseAndCalculate(raw);
+      document.getElementById('firstIn').textContent = formatDT(firstIn);
+      document.getElementById('worked').textContent = formatDuration(insideTotal);
+      document.getElementById('outside').textContent = formatDuration(outsideTotal);
+      document.getElementById('requiredWork').textContent = minutesToHHMM(requiredWorkMin);
+      const remainingMin = Math.max(0, Math.ceil(requiredWorkMin - (insideTotal/60000)));
+      document.getElementById('remaining').textContent = `${minutesToHHMM(remainingMin)} (${remainingMin} min)`;
+      document.getElementById('logout').textContent = formatDT(logout);
+      // populate table
+      const tbody = document.querySelector('#eventsTable tbody');
+      tbody.innerHTML = '';
+      for (const ev of events) {
+        const tr = document.createElement('tr');
+        const tdType = document.createElement('td');
+        tdType.textContent = ev.type;
+        const tdTs = document.createElement('td');
+        tdTs.textContent = formatDT(ev.dt);
+        const tdDur = document.createElement('td');
+        tdDur.textContent = ev.duration ? formatDuration(ev.duration) : '-';
+        tr.appendChild(tdType); tr.appendChild(tdTs); tr.appendChild(tdDur);
+        tbody.appendChild(tr);
+      }
+      document.getElementById('output').style.display = 'block';
+    } catch (e) {
+      console.error(e);
+      alert('Could not parse input — make sure it contains lines with IN/OUT followed by time and date.');
+    }
+  });
+
+  // Helpers and core parser
+  function parseAndCalculate(raw) {
+    // Extract events: look for lines that start with IN or OUT, then take next two non-empty lines as time and date.
+    const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(s => s !== '');
+    const events = [];
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i].toUpperCase();
+      if (l === 'IN' || l === 'OUT') {
+        const timeLine = lines[i + 1] || '';
+        const dateLine = lines[i + 2] || '';
+        events.push({ type: l, timeText: timeLine, dateText: dateLine });
+        i += 2; // skip the time and date lines
+      }
+    }
+    if (!events.length) throw new Error('No IN/OUT events found.');
+
+    // Convert to Date objects (local)
+    const parsed = events.map(e => {
+      const dt = parseTimeDate(e.timeText, e.dateText);
+      return { type: e.type, dt };
+    });
+
+    // Compute inside (IN->OUT) and outside (OUT->IN)
+    let insideMs = 0;
+    let outsideMs = 0;
+    const timeline = [];
+    for (let i = 0; i < parsed.length; i++) {
+      const cur = parsed[i];
+      timeline.push({ type: cur.type, dt: cur.dt, duration: null });
+      const next = parsed[i + 1];
+      if (!next) continue;
+      if (cur.type === 'IN' && next.type === 'OUT') {
+        const d = next.dt - cur.dt;
+        insideMs += d;
+        timeline.push({ type: 'IN->OUT', dt: next.dt, duration: d });
+      } else if (cur.type === 'OUT' && next.type === 'IN') {
+        const d = next.dt - cur.dt;
+        outsideMs += d;
+        timeline.push({ type: 'OUT->IN', dt: next.dt, duration: d });
+      }
+    }
+
+    // Rule: baseline required work = 8h20 (500 min). If outside_minutes > 40 => required += (outside_minutes - 40) minutes
+    const outsideMinutesCeil = Math.ceil(outsideMs / 60000);
+    const extra = Math.max(0, outsideMinutesCeil - 40);
+    const requiredWorkMin = 8 * 60 + 20 + extra;
+
+    // Logout time = firstIN + requiredWork + total_outside (so clock day includes outside)
+    const firstIn = parsed.find(p => p.type === 'IN');
+    if (!firstIn) throw new Error('No IN found to use as day start.');
+    const logout = new Date(firstIn.dt.getTime() + requiredWorkMin * 60000 + outsideMs);
+
+    return {
+      firstIn: firstIn.dt,
+      insideTotal: insideMs,
+      outsideTotal: outsideMs,
+      requiredWorkMin,
+      logout,
+      events: timeline
+    };
+  }
+
+  function parseTimeDate(timeText, dateText) {
+    // Normalize: handle "14:54:16 pm" (redundant am/pm), "11:43:37 am", or 24-hour times.
+    const time = (timeText || '').trim();
+    const date = (dateText || '').trim();
+    // Try parsing date with patterns: "16 Mar 2026", "2026-03-16", etc.
+    let day, month, year;
+    // first try dd Mon yyyy
+    let dt;
+    const tryParse = (s) => {
+      const t = Date.parse(s);
+      return Number.isNaN(t) ? null : new Date(t);
+    };
+    // Build a combined string to help Date.parse
+    // Fix time am/pm issues: if time contains am/pm and hour > 12, drop am/pm and use as 24h.
+    let tparts = time.match(/(\d{1,2}):(\d{2}):(\d{2})\s*(am|pm)?/i);
+    if (!tparts) throw new Error('Time parse failed: ' + time);
+    let hh = parseInt(tparts[1], 10);
+    const mm = tparts[2];
+    const ss = tparts[3];
+    const ampm = tparts[4] ? tparts[4].toLowerCase() : null;
+    if (ampm) {
+      if (ampm === 'pm' && hh < 12) hh += 12;
+      if (ampm === 'am' && hh === 12) hh = 0;
+    }
+    // If no am/pm but hour appears > 12, assume 24-hour.
+    // Build ISO-ish string
+    const padded = (n) => (n < 10 ? '0' + n : '' + n);
+    // Parse date text using Date.parse-friendly format (swap month names if needed)
+    // We will try a few parses
+    const candidates = [];
+    if (date) candidates.push(`${date} ${padded(hh)}:${mm}:${ss}`);
+    // Also try dd MMM yyyy
+    candidates.push(`${padded(hh)}:${mm}:${ss} ${date}`);
+    let parsed = null;
+    for (const c of candidates) {
+      const d = tryParse(c);
+      if (d) { parsed = d; break; }
+    }
+    if (!parsed) {
+      // last resort: split date by space
+      const m = date.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+      if (m) {
+        const dd = parseInt(m[1], 10);
+        const mon = m[2];
+        const yy = parseInt(m[3], 10);
+        parsed = new Date(`${yy}-${monthNameToNumber(mon)}-${dd}T${padded(hh)}:${mm}:${ss}`);
+      }
+    }
+    if (!parsed) throw new Error('Date parse failed for: ' + date + ' / ' + time);
+    return parsed;
+  }
+
+  function monthNameToNumber(m) {
+    const map = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
+    const k = (m || '').substr(0,3).toLowerCase();
+    return map[k] || 1;
+  }
+
+  function formatDuration(ms) {
+    const totalSec = Math.floor(ms / 1000);
+    const hh = Math.floor(totalSec / 3600);
+    const mm = Math.floor((totalSec % 3600) / 60);
+    const ss = totalSec % 60;
+    return `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+  }
+  function minutesToHHMM(min) {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return `${pad(h)}:${pad(m)}`;
+  }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function formatDT(d) {
+    if (!d) return '-';
+    // e.g. 16 Mar 2026 08:37:25 PM
+    const opts = { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true };
+    return new Intl.DateTimeFormat(undefined, opts).format(d);
+  }
+  </script>
+</body>
+</html>
