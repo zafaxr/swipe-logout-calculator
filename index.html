@@ -23,6 +23,9 @@
       --accent-border: rgba(200, 240, 96, 0.2);
       --in-color: #60d0f0;
       --out-color: #f06090;
+      --warn-color: #f0a060;
+      --warn-dim: rgba(240, 160, 96, 0.08);
+      --warn-border: rgba(240, 160, 96, 0.25);
       --radius: 10px;
       --radius-sm: 6px;
     }
@@ -40,9 +43,7 @@
     .container { max-width: 680px; margin: 0 auto; }
 
     /* Header */
-    .header {
-      margin-bottom: 40px;
-    }
+    .header { margin-bottom: 40px; }
     .header-eyebrow {
       font-family: 'DM Mono', monospace;
       font-size: 0.72rem;
@@ -58,9 +59,7 @@
       color: var(--text);
       line-height: 1;
     }
-    .header h1 span {
-      color: var(--accent);
-    }
+    .header h1 span { color: var(--accent); }
     .tz-badge {
       display: inline-flex;
       align-items: center;
@@ -142,9 +141,7 @@
     textarea::placeholder { color: var(--text-dim); }
 
     /* Actions */
-    .actions {
-      margin-top: 12px;
-    }
+    .actions { margin-top: 12px; }
     .calc-btn {
       width: 100%;
       padding: 13px;
@@ -185,12 +182,56 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 16px 18px;
+      transition: border-color 0.3s, background 0.3s;
     }
     .stat-card.featured {
       background: var(--accent-dim);
       border-color: var(--accent-border);
       grid-column: span 2;
     }
+
+    /* Countdown card states */
+    .stat-card.countdown-card {
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card.countdown-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.5s;
+      pointer-events: none;
+    }
+    .stat-card.countdown-card.warn {
+      border-color: var(--warn-border);
+      background: var(--warn-dim);
+    }
+    .stat-card.countdown-card.warn .stat-value {
+      color: var(--warn-color);
+    }
+    .stat-card.countdown-card.warn .stat-label {
+      color: var(--warn-color);
+      opacity: 0.6;
+    }
+    .stat-card.countdown-card.done {
+      border-color: rgba(240, 96, 144, 0.3);
+      background: rgba(240, 96, 144, 0.06);
+    }
+    .stat-card.countdown-card.done .stat-value {
+      color: var(--out-color);
+    }
+
+    /* Ticking animation on the countdown digits */
+    @keyframes tickFlash {
+      0%   { opacity: 1; }
+      45%  { opacity: 1; }
+      50%  { opacity: 0.55; }
+      55%  { opacity: 1; }
+      100% { opacity: 1; }
+    }
+    .ticking { animation: tickFlash 1s step-end infinite; }
+
     .stat-label {
       font-family: 'DM Mono', monospace;
       font-size: 0.66rem;
@@ -198,6 +239,7 @@
       text-transform: uppercase;
       color: var(--text-muted);
       margin-bottom: 6px;
+      transition: color 0.3s;
     }
     .stat-value {
       font-family: 'DM Mono', monospace;
@@ -206,6 +248,7 @@
       color: var(--text);
       letter-spacing: -0.02em;
       line-height: 1;
+      transition: color 0.3s;
     }
     .stat-card.featured .stat-value {
       color: var(--accent);
@@ -216,6 +259,50 @@
       font-size: 0.7rem;
       color: var(--text-muted);
       margin-top: 4px;
+    }
+
+    /* Progress bar under countdown */
+    .progress-track {
+      margin-top: 10px;
+      height: 3px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: var(--accent);
+      transition: width 1s linear, background 0.4s;
+      width: 0%;
+    }
+    .warn .progress-fill  { background: var(--warn-color); }
+    .done .progress-fill  { background: var(--out-color); width: 100% !important; }
+
+    /* Toast notification */
+    #toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--out-color);
+      color: #0c0c0d;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: 0.03em;
+      padding: 14px 28px;
+      border-radius: 40px;
+      white-space: nowrap;
+      box-shadow: 0 8px 32px rgba(240, 96, 144, 0.35);
+      opacity: 0;
+      transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      pointer-events: none;
+      z-index: 999;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
     }
 
     /* Timeline */
@@ -291,6 +378,16 @@
         <div class="stat-label">Projected Logout</div>
         <div class="stat-value" id="logout">—</div>
       </div>
+
+      <!-- Countdown card -->
+      <div class="stat-card countdown-card" id="countdownCard" style="grid-column: span 2;">
+        <div class="stat-label">Time Till Logout</div>
+        <div class="stat-value" id="countdown">—</div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+      </div>
+
       <div class="stat-card">
         <div class="stat-label">First IN</div>
         <div class="stat-value" id="firstIn">—</div>
@@ -325,7 +422,15 @@
 
 </div>
 
+<!-- Toast -->
+<div id="toast">🚪 Time to logout!</div>
+
 <script>
+  let countdownInterval = null;
+  let logoutTarget = null;
+  let dayStartTime = null;
+  let alreadyAlerted = false;
+
   document.getElementById('tzLabel').textContent =
     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
 
@@ -377,6 +482,7 @@ Actual Hours : 00 hrs 00 mins`;
     if (!raw) return alert('Paste the swipe text first.');
     try {
       const { firstIn, insideTotal, outsideTotal, requiredWorkMin, logout, events } = parseAndCalculate(raw);
+
       document.getElementById('firstIn').textContent = formatDT(firstIn);
       document.getElementById('worked').textContent = formatDuration(insideTotal);
       document.getElementById('outside').textContent = formatDuration(outsideTotal);
@@ -386,6 +492,7 @@ Actual Hours : 00 hrs 00 mins`;
       document.getElementById('remainingMin').textContent = remainingMin + ' min';
       document.getElementById('logout').textContent = formatDT(logout);
 
+      // Timeline
       const body = document.getElementById('timelineBody');
       body.innerHTML = '';
       for (const ev of events) {
@@ -398,17 +505,91 @@ Actual Hours : 00 hrs 00 mins`;
           <span class="tl-dur">${ev.duration ? formatDuration(ev.duration) : '—'}</span>`;
         body.appendChild(row);
       }
+
+      // Show output
       const out = document.getElementById('output');
       out.style.display = 'block';
       out.style.animation = 'none';
       requestAnimationFrame(() => { out.style.animation = ''; });
+
+      // Start live countdown
+      logoutTarget = logout;
+      dayStartTime = firstIn;
+      alreadyAlerted = false;
+      startCountdown();
+
     } catch (e) {
       console.error(e);
       alert('Could not parse input — make sure it contains IN/OUT lines followed by time and date.');
     }
   });
 
-  // ── Core logic (unchanged) ──────────────────────────────────────────
+  // ── Countdown ──────────────────────────────────────────────────────
+
+  function startCountdown() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    tickCountdown(); // immediate first tick
+    countdownInterval = setInterval(tickCountdown, 1000);
+  }
+
+  function tickCountdown() {
+    const now = Date.now();
+    const remaining = logoutTarget - now;
+    const card = document.getElementById('countdownCard');
+    const fill = document.getElementById('progressFill');
+    const countdownEl = document.getElementById('countdown');
+
+    // Progress bar — fraction of the work day elapsed
+    const totalMs = logoutTarget - dayStartTime;
+    const elapsed = now - dayStartTime;
+    const pct = Math.min(100, Math.max(0, (elapsed / totalMs) * 100));
+    fill.style.width = pct + '%';
+
+    if (remaining <= 0) {
+      // Done!
+      countdownEl.textContent = '00:00:00';
+      countdownEl.classList.remove('ticking');
+      card.classList.remove('warn');
+      card.classList.add('done');
+      clearInterval(countdownInterval);
+
+      if (!alreadyAlerted) {
+        alreadyAlerted = true;
+        showToast('🚪 Time to logout!');
+      }
+      return;
+    }
+
+    // Format HH:MM:SS
+    const totalSec = Math.ceil(remaining / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    countdownEl.textContent = `${pad(h)}:${pad(m)}:${pad(s)}`;
+    countdownEl.classList.add('ticking');
+
+    // Warning state — last 30 minutes
+    if (remaining <= 30 * 60 * 1000) {
+      card.classList.add('warn');
+    } else {
+      card.classList.remove('warn');
+    }
+    card.classList.remove('done');
+  }
+
+  // ── Toast ──────────────────────────────────────────────────────────
+
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    // Auto-dismiss after 8 seconds
+    setTimeout(() => {
+      toast.classList.remove('show');
+    }, 8000);
+  }
+
+  // ── Core logic ──────────────────────────────────────────────────────
 
   function parseAndCalculate(raw) {
     const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(s => s !== '');
@@ -466,15 +647,15 @@ Actual Hours : 00 hrs 00 mins`;
       if (ampm === 'pm' && hh < 12) hh += 12;
       if (ampm === 'am' && hh === 12) hh = 0;
     }
-    const pad = n => (n < 10 ? '0' + n : '' + n);
+    const pad2 = n => (n < 10 ? '0' + n : '' + n);
     const candidates = [];
-    if (date) candidates.push(`${date} ${pad(hh)}:${mm}:${ss}`);
-    candidates.push(`${pad(hh)}:${mm}:${ss} ${date}`);
+    if (date) candidates.push(`${date} ${pad2(hh)}:${mm}:${ss}`);
+    candidates.push(`${pad2(hh)}:${mm}:${ss} ${date}`);
     let parsed = null;
     for (const c of candidates) { const d = tryParse(c); if (d) { parsed = d; break; } }
     if (!parsed) {
       const m = date.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
-      if (m) parsed = new Date(`${m[3]}-${monthNameToNumber(m[2])}-${m[1]}T${pad(hh)}:${mm}:${ss}`);
+      if (m) parsed = new Date(`${m[3]}-${monthNameToNumber(m[2])}-${m[1]}T${pad2(hh)}:${mm}:${ss}`);
     }
     if (!parsed) throw new Error('Date parse failed for: ' + date + ' / ' + time);
     return parsed;
