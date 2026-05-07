@@ -481,6 +481,10 @@
   let alreadyAlerted = false;
   let titleBlinkInterval = null;
   const originalTitle = document.title;
+  let staticInsideMs = 0;
+  let staticOutsideMs = 0;
+  let lastEventType = null;
+  let lastEventTime = null;
 
   document.getElementById('tzLabel').textContent =
     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
@@ -532,16 +536,17 @@ Actual Hours : 00 hrs 00 mins`;
     const raw = document.getElementById('inputArea').value.trim();
     if (!raw) return alert('Paste the swipe text first.');
     try {
-      const { firstIn, insideTotal, outsideTotal, requiredWorkMin, logout, events } = parseAndCalculate(raw);
+      const { firstIn, insideTotal, outsideTotal, requiredWorkMin, logout, events, lastType, lastTime } = parseAndCalculate(raw);
 
       document.getElementById('firstIn').textContent = formatDT(firstIn);
-      document.getElementById('worked').textContent = formatDuration(insideTotal);
-      document.getElementById('outside').textContent = formatDuration(outsideTotal);
       document.getElementById('requiredWork').textContent = minutesToHHMM(requiredWorkMin);
-      const remainingMin = Math.max(0, Math.ceil(requiredWorkMin - (insideTotal / 60000)));
-      document.getElementById('remaining').textContent = minutesToHHMM(remainingMin);
-      document.getElementById('remainingMin').textContent = remainingMin + ' min';
       document.getElementById('logout').textContent = formatDT(logout);
+
+      // Live-tracking state — tickCountdown will update worked/outside/remaining
+      staticInsideMs = insideTotal;
+      staticOutsideMs = outsideTotal;
+      lastEventType = lastType;
+      lastEventTime = lastTime;
 
       // Timeline
       const body = document.getElementById('timelineBody');
@@ -591,6 +596,16 @@ Actual Hours : 00 hrs 00 mins`;
     const card = document.getElementById('countdownCard');
     const fill = document.getElementById('progressFill');
     const countdownEl = document.getElementById('countdown');
+
+    // Live inside/outside time
+    const sinceLastEvent = now - lastEventTime;
+    const liveInsideMs  = lastEventType === 'IN'  ? staticInsideMs  + sinceLastEvent : staticInsideMs;
+    const liveOutsideMs = lastEventType === 'OUT' ? staticOutsideMs + sinceLastEvent : staticOutsideMs;
+    document.getElementById('worked').textContent  = formatDuration(liveInsideMs);
+    document.getElementById('outside').textContent = formatDuration(liveOutsideMs);
+    const remainingInsideMin = Math.max(0, Math.ceil((8 * 60 * 60 * 1000 - liveInsideMs) / 60000));
+    document.getElementById('remaining').textContent  = minutesToHHMM(remainingInsideMin);
+    document.getElementById('remainingMin').textContent = remainingInsideMin + ' min';
 
     // Progress bar — fraction of the work day elapsed
     const totalMs = logoutTarget - dayStartTime;
@@ -701,7 +716,8 @@ Actual Hours : 00 hrs 00 mins`;
     // logout = firstIn + 8h inside + actual break time
     const logout = new Date(firstIn.dt.getTime() + requiredWorkMin * 60000 + outsideMs);
 
-    return { firstIn: firstIn.dt, insideTotal: insideMs, outsideTotal: outsideMs, requiredWorkMin, logout, events: timeline };
+    const lastEvent = parsed[parsed.length - 1];
+    return { firstIn: firstIn.dt, insideTotal: insideMs, outsideTotal: outsideMs, requiredWorkMin, logout, events: timeline, lastType: lastEvent.type, lastTime: lastEvent.dt.getTime() };
   }
 
   function parseTimeDate(timeText, dateText) {
