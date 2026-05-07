@@ -42,6 +42,136 @@
 
     .container { max-width: 680px; margin: 0 auto; }
 
+    /* ── Login screen ── */
+    #loginScreen {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      margin: -48px -24px;
+    }
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+    }
+    .login-eyebrow {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .login-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 32px;
+    }
+    .login-title span { color: var(--accent); }
+    .login-field { margin-bottom: 14px; }
+    .login-field label {
+      display: block;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .login-field input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .login-field input:focus {
+      border-color: var(--accent-border);
+      box-shadow: 0 0 0 3px rgba(200,240,96,0.04);
+    }
+    .login-btn {
+      width: 100%;
+      margin-top: 22px;
+      padding: 13px;
+      background: var(--accent);
+      color: #0c0c0d;
+      border: none;
+      border-radius: var(--radius);
+      font-family: 'Syne', sans-serif;
+      font-size: 0.88rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      position: relative;
+    }
+    .login-btn:hover   { opacity: 0.88; }
+    .login-btn:active  { transform: scale(0.99); }
+    .login-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .login-error {
+      margin-top: 14px;
+      padding: 10px 12px;
+      background: rgba(240,96,144,0.08);
+      border: 1px solid rgba(240,96,144,0.25);
+      border-radius: var(--radius-sm);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--out-color);
+      display: none;
+    }
+    .login-note {
+      margin-top: 16px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      text-align: center;
+      line-height: 1.5;
+    }
+    /* session badge in header */
+    .session-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 10px 3px 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .session-badge:hover { border-color: var(--out-color); color: var(--out-color); }
+    .fetch-btn {
+      width: 100%;
+      margin-bottom: 12px;
+      padding: 11px;
+      background: var(--surface2);
+      color: var(--accent);
+      border: 1px solid var(--accent-border);
+      border-radius: var(--radius);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .fetch-btn:hover    { background: var(--accent-dim); }
+    .fetch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
     /* Header */
     .header { margin-bottom: 40px; }
     .header-eyebrow {
@@ -391,16 +521,47 @@
   </style>
 </head>
 <body>
-<div class="container">
+
+<!-- ── Login screen ── -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-eyebrow">attendance tool</div>
+    <div class="login-title">Swipe <span>Logout</span></div>
+
+    <div class="login-field">
+      <label>Employee ID</label>
+      <input type="text" id="loginUser" placeholder="HC 343" autocomplete="username" />
+    </div>
+    <div class="login-field">
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+
+    <button class="login-btn" id="loginBtn">Sign in to greytHR</button>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-note">Credentials are sent only to your local proxy server<br>and never stored anywhere.</div>
+  </div>
+</div>
+
+<!-- ── Main calculator (hidden until logged in) ── -->
+<div class="container" id="mainApp" style="display:none;">
 
   <header class="header">
     <div class="header-eyebrow">attendance tool</div>
     <h1>Swipe <span>Logout</span></h1>
-    <div class="tz-badge">
-      <span class="tz-dot"></span>
-      <span id="tzLabel"></span>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;">
+      <div class="tz-badge" style="margin-top:0;">
+        <span class="tz-dot"></span>
+        <span id="tzLabel"></span>
+      </div>
+      <div class="session-badge" id="sessionBadge" onclick="logout()" title="Click to sign out">
+        <span id="sessionUser"></span>
+        <span style="color:var(--out-color);font-size:0.65rem;">sign out</span>
+      </div>
     </div>
   </header>
+
+  <button class="fetch-btn" id="fetchBtn">↓ Fetch today's swipes from greytHR</button>
 
   <div class="input-block">
     <div class="input-label">
@@ -463,6 +624,7 @@
   </div>
 
 </div>
+</div><!-- /#mainApp -->
 
 <!-- Logout alert overlay -->
 <div id="alertOverlay">
@@ -475,6 +637,94 @@
 </div>
 
 <script>
+  // ── Auth state ────────────────────────────────────────────────────────────
+  const API = 'http://localhost:3001';
+  let sessionCookie = null;
+  let sessionUserName = null;
+
+  function showMain(userName) {
+    sessionUserName = userName;
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    document.getElementById('sessionUser').textContent = userName;
+  }
+
+  function logout() {
+    sessionCookie = null;
+    sessionUserName = null;
+    document.getElementById('mainApp').style.display = 'none';
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('loginPass').value = '';
+    document.getElementById('loginError').style.display = 'none';
+  }
+
+  // ── Login ─────────────────────────────────────────────────────────────────
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    const userName = document.getElementById('loginUser').value.trim();
+    const password = document.getElementById('loginPass').value;
+    const errEl    = document.getElementById('loginError');
+    const btn      = document.getElementById('loginBtn');
+    if (!userName || !password) { showLoginError('Enter employee ID and password.'); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    errEl.style.display = 'none';
+
+    try {
+      const res  = await fetch(`${API}/api/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ userName, password }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        showLoginError(data.error || 'Login failed. Check credentials.');
+        return;
+      }
+      sessionCookie = data.sessionCookie;
+      showMain(userName);
+    } catch (e) {
+      showLoginError('Cannot reach local server. Run: npm start');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sign in to greytHR';
+    }
+  });
+
+  document.getElementById('loginPass').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('loginBtn').click();
+  });
+
+  function showLoginError(msg) {
+    const el = document.getElementById('loginError');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  // ── Fetch today's swipes ──────────────────────────────────────────────────
+  document.getElementById('fetchBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('fetchBtn');
+    btn.disabled = true;
+    btn.textContent = '↓ Fetching…';
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res   = await fetch(`${API}/api/attendance?date=${today}&sessionCookie=${encodeURIComponent(sessionCookie)}`);
+      const data  = await res.json();
+      if (!res.ok) { alert('Fetch failed: ' + (data.error || res.status)); return; }
+
+      // TODO: once we know the real response shape, transform data.raw → swipe text
+      // For now dump raw JSON into the textarea so we can inspect it
+      document.getElementById('inputArea').value = JSON.stringify(data.raw, null, 2);
+      alert('Raw data loaded — check the textarea to see the response shape, then we can wire up the parser.');
+    } catch (e) {
+      alert('Error: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '↓ Fetch today\'s swipes from greytHR';
+    }
+  });
+
+  // ── Countdown ──────────────────────────────────────────────────────
   let countdownInterval = null;
   let logoutTarget = null;
   let dayStartTime = null;
