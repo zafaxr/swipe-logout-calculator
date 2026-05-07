@@ -641,6 +641,7 @@
   const API = 'http://localhost:3001';
   let sessionCookie = null;
   let sessionUserName = null;
+  let employeeId = null;
 
   function showMain(userName) {
     sessionUserName = userName;
@@ -652,6 +653,7 @@
   function logout() {
     sessionCookie = null;
     sessionUserName = null;
+    employeeId = null;
     document.getElementById('mainApp').style.display = 'none';
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('loginPass').value = '';
@@ -682,6 +684,7 @@
         return;
       }
       sessionCookie = data.sessionCookie;
+      employeeId    = data.employeeId;
       showMain(userName);
     } catch (e) {
       showLoginError('Cannot reach local server. Run: npm start');
@@ -708,14 +711,22 @@
     btn.textContent = '↓ Fetching…';
     try {
       const today = new Date().toISOString().split('T')[0];
-      const res   = await fetch(`${API}/api/attendance?date=${today}&sessionCookie=${encodeURIComponent(sessionCookie)}`);
-      const data  = await res.json();
+      const res   = await fetch(
+        `${API}/api/attendance?date=${today}` +
+        `&sessionCookie=${encodeURIComponent(sessionCookie)}` +
+        `&employeeId=${encodeURIComponent(employeeId)}`
+      );
+      const data = await res.json();
       if (!res.ok) { alert('Fetch failed: ' + (data.error || res.status)); return; }
 
-      // TODO: once we know the real response shape, transform data.raw → swipe text
-      // For now dump raw JSON into the textarea so we can inspect it
-      document.getElementById('inputArea').value = JSON.stringify(data.raw, null, 2);
-      alert('Raw data loaded — check the textarea to see the response shape, then we can wire up the parser.');
+      const swipesData = data.raw;
+      if (!swipesData || !swipesData.swipe || !swipesData.swipe.length) {
+        alert('No swipes recorded for today yet.');
+        return;
+      }
+
+      const result = parseSwipesFromAPI(swipesData);
+      renderResults(result);
     } catch (e) {
       alert('Error: ' + e.message);
     } finally {
@@ -786,51 +797,86 @@ Actual Hours : 00 hrs 00 mins`;
     const raw = document.getElementById('inputArea').value.trim();
     if (!raw) return alert('Paste the swipe text first.');
     try {
-      const { firstIn, insideTotal, outsideTotal, requiredWorkMin, logout, events, lastType, lastTime } = parseAndCalculate(raw);
-
-      document.getElementById('firstIn').textContent = formatDT(firstIn);
-      document.getElementById('requiredWork').textContent = minutesToHHMM(requiredWorkMin);
-      document.getElementById('logout').textContent = formatDT(logout);
-
-      // Live-tracking state — tickCountdown will update worked/outside/remaining
-      staticInsideMs = insideTotal;
-      staticOutsideMs = outsideTotal;
-      lastEventType = lastType;
-      lastEventTime = lastTime;
-
-      // Timeline
-      const body = document.getElementById('timelineBody');
-      body.innerHTML = '';
-      for (const ev of events) {
-        const row = document.createElement('div');
-        row.className = 'tl-row';
-        const typeClass = ev.type === 'IN' ? 'in' : ev.type === 'OUT' ? 'out' : 'span';
-        row.innerHTML = `
-          <span class="tl-type ${typeClass}">${ev.type}</span>
-          <span class="tl-ts">${formatDT(ev.dt)}</span>
-          <span class="tl-dur">${ev.duration ? formatDuration(ev.duration) : '—'}</span>`;
-        body.appendChild(row);
-      }
-
-      // Show output
-      const out = document.getElementById('output');
-      out.style.display = 'block';
-      out.style.animation = 'none';
-      requestAnimationFrame(() => { out.style.animation = ''; });
-
-      // Start live countdown
-      logoutTarget = logout;
-      dayStartTime = firstIn;
-      alreadyAlerted = false;
-      stopTitleBlink();
-      dismissAlert();
-      startCountdown();
-
+      renderResults(parseAndCalculate(raw));
     } catch (e) {
       console.error(e);
       alert('Could not parse input — make sure it contains IN/OUT lines followed by time and date.');
     }
   });
+
+  function renderResults({ firstIn, insideTotal, outsideTotal, requiredWorkMin, logout, events, lastType, lastTime }) {
+    document.getElementById('firstIn').textContent    = formatDT(firstIn);
+    document.getElementById('requiredWork').textContent = minutesToHHMM(requiredWorkMin);
+    document.getElementById('logout').textContent     = formatDT(logout);
+
+    staticInsideMs  = insideTotal;
+    staticOutsideMs = outsideTotal;
+    lastEventType   = lastType;
+    lastEventTime   = lastTime;
+
+    const body = document.getElementById('timelineBody');
+    body.innerHTML = '';
+    for (const ev of events) {
+      const row = document.createElement('div');
+      row.className = 'tl-row';
+      const typeClass = ev.type === 'IN' ? 'in' : ev.type === 'OUT' ? 'out' : 'span';
+      row.innerHTML = `
+        <span class="tl-type ${typeClass}">${ev.type}</span>
+        <span class="tl-ts">${formatDT(ev.dt)}</span>
+        <span class="tl-dur">${ev.duration ? formatDuration(ev.duration) : '—'}</span>`;
+      body.appendChild(row);
+    }
+
+    const out = document.getElementById('output');
+    out.style.display = 'block';
+    out.style.animation = 'none';
+    requestAnimationFrame(() => { out.style.animation = ''; });
+
+    logoutTarget   = logout;
+    dayStartTime   = firstIn;
+    alreadyAlerted = false;
+    stopTitleBlink();
+    dismissAlert();
+    startCountdown();
+  }
+
+  // Parse swipes JSON from the latte API directly (punchDateTime is UTC)
+  function parseSwipesFromAPI(data) {
+    const swipes = [...(data.swipe || [])].sort((a, b) => a.punchDateTime.localeCompare(b.punchDateTime));
+    if (!swipes.length) throw new Error('No swipes found for today');
+
+    const parsed = swipes.map(s => ({
+      type: s.inOutIndicator === 1 ? 'IN' : 'OUT',
+      dt:   new Date(s.punchDateTime + 'Z'),  // punchDateTime is UTC
+    }));
+
+    let insideMs = 0, outsideMs = 0;
+    const timeline = [];
+    for (let i = 0; i < parsed.length; i++) {
+      const cur  = parsed[i];
+      const next = parsed[i + 1];
+      timeline.push({ type: cur.type, dt: cur.dt, duration: null });
+      if (!next) continue;
+      if (cur.type === 'IN' && next.type === 'OUT') {
+        const d = next.dt - cur.dt;
+        insideMs += d;
+        timeline.push({ type: 'IN->OUT', dt: next.dt, duration: d });
+      } else if (cur.type === 'OUT' && next.type === 'IN') {
+        const d = next.dt - cur.dt;
+        outsideMs += d;
+        timeline.push({ type: 'OUT->IN', dt: next.dt, duration: d });
+      }
+    }
+
+    const firstIn = parsed.find(p => p.type === 'IN');
+    if (!firstIn) throw new Error('No IN swipe found for today');
+
+    const requiredWorkMin = 8 * 60;
+    const logout = new Date(firstIn.dt.getTime() + requiredWorkMin * 60000 + outsideMs);
+    const last   = parsed[parsed.length - 1];
+
+    return { firstIn: firstIn.dt, insideTotal: insideMs, outsideTotal: outsideMs, requiredWorkMin, logout, events: timeline, lastType: last.type, lastTime: last.dt.getTime() };
+  }
 
   // ── Countdown ──────────────────────────────────────────────────────
 
